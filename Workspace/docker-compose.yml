@@ -1,0 +1,53 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: workspace_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/workspace_db
+      TZ: America/Bogota
+    ports:
+      - "8082:8082"
+    networks:
+      - workspace_network
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: postgres_workspace
+    restart: unless-stopped
+    
+    environment:
+      POSTGRES_DB: workspace_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      TZ: America/Bogota
+    
+    ports:
+      - "5433:5432"
+    
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d workspace_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    
+    networks:
+      - workspace_network
+
+volumes:
+  postgres_data:
+    name: workspace_postgres_data
+
+networks:
+  workspace_network:
+    name: workspace_network
