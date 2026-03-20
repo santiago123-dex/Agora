@@ -1,0 +1,125 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: auth_postgres
+    environment:
+      POSTGRES_USER: auth
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: auth
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./auth_db.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth -d auth"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - auth_network
+
+  auth:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auth_service
+    environment:
+      # ============================================
+      # Deployment Mode
+      # ============================================
+      AUTH_MODE: development
+
+      # --------------------------------------------
+      # Server Configuration
+      # --------------------------------------------
+      AUTH_SERVER_HOST: 0.0.0.0
+      AUTH_SERVER_PORT: 8083
+
+      # --------------------------------------------
+      # Database Configuration
+      # --------------------------------------------
+      AUTH_DATABASE_URL: postgres://auth:password@postgres:5432/auth
+      AUTH_DB_MAX_CONNECTIONS: 20
+      AUTH_DB_CONNECT_TIMEOUT_SECS: 30
+
+      # --------------------------------------------
+      # Cryptographic Configuration
+      # --------------------------------------------
+      # Password hashing parameters (Argon2id)
+      AUTH_HASH_MEMORY_COST: 65536
+      AUTH_HASH_ITERATIONS: 3
+      AUTH_HASH_PARALLELISM: 1
+
+      # JWT signing algorithm (eddsa or hmac)
+      AUTH_TOKEN_ALGORITHM: eddsa
+
+      # EdDSA (Ed25519) private key - base64 encoded
+      AUTH_EDDSA_PRIVATE_KEY: MC4CAQAwBQYDK2VwBCIEIHoED0VC0vAP2dD8RNjKD1sn4c4m8gZIK6YLOFoHPNmM
+
+      # EdDSA (Ed25519) public key - base64 encoded
+      AUTH_EDDSA_PUBLIC_KEY: MCowBQYDK2VwAyEAMLV/pdiJZKdjSl7uvOPALxn+d5p/DkmdnMuM3svVt8U=
+
+      # JWT signing key for HMAC fallback (base64-encoded, minimum 32 bytes for HS256)
+      AUTH_TOKEN_SIGNING_KEY: L+Qa8cqsFJB2OiN1l0iAQULis+uIC42lOKlDa261VWU=
+
+      # Token time-to-live
+      AUTH_ACCESS_TOKEN_TTL_MINS: 15
+      AUTH_REFRESH_TOKEN_TTL_DAYS: 7
+
+      # --------------------------------------------
+      # Security Configuration
+      # --------------------------------------------
+      # Account lockout settings
+      AUTH_MAX_FAILED_ATTEMPTS: 5
+      AUTH_LOCK_DURATION_MINS: 30
+
+      # Debug logging (disable in production - may log sensitive data)
+      AUTH_ENABLE_DEBUG_LOGS: "true"
+
+      # --------------------------------------------
+      # Service-to-Service Authentication
+      # --------------------------------------------
+      # Comma-separated list of valid API keys for internal services
+      AUTH_SERVICE_KEYS: 86fc2ba2b3b1ccefdc84c2d25987046a76e0015c6833c51044934e255889b7e5
+
+      # Service credentials (format: service_id:hashed_secret)
+      # Note: Use single quotes in YAML to prevent variable interpolation
+      AUTH_SERVICE_CREDENTIALS: 'user_service:$$argon2id$$v=19$$m=65536,t=3,p=4$$kxzZWI3IsGFn66P4a2rFyQ$$ktxGHbZwV3ARiV4JQKotL6567/M/asjbmwKokAxY7VI'
+
+      # Service token signing algorithm (eddsa or hmac)
+      AUTH_SERVICE_TOKEN_ALGORITHM: eddsa
+
+      # EdDSA service token private key - base64 encoded
+      AUTH_EDDSA_SERVICE_PRIVATE_KEY: SkPWZf95U4Kw3hFBHPwgp4CntmfXp0z52NO0ZFAn934=
+
+      # JWT signing key (base64-encoded, minimum 32 bytes for HS256)
+      AUTH_SERVICE_TOKEN_SIGNING_KEY: MC4CAQAwBQYDK2VwBCIEIEijKYup3bWvQBsUEZPMAwcC43kkL3PjQhhqUWPD3j6C
+
+      # EdDSA service token public key - base64 encoded
+      AUTH_EDDSA_SERVICE_PUBLIC_KEY: XodIs12bv5brdJZfv5asyMX7B+nZhOv3IcpDZuKkTUY=
+
+      # Service token TTL in minutes
+      AUTH_SERVICE_TOKEN_TTL_MINS: 60
+
+      # Rust logging
+      RUST_LOG: info
+    ports:
+      - "8083:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - auth_network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  auth_network:
+    driver: bridge
